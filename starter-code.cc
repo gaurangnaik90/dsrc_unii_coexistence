@@ -20,14 +20,6 @@
  * Author: Junling Bu <linlinjavaer@gmail.com>
  *
  */
-/**
- * This example shows basic construction of an 802.11p node.  Two nodes
- * are constructed with 802.11p devices, and by default, one node sends a single
- * packet to another node (the number of packets and interval between
- * them can be configured by command-line arguments).  The example shows
- * typical usage of the helper classes for this mode of WiFi (where "OCB" refers
- * to "Outside the Context of a BSS")."
- */
 
 #include "ns3/vector.h"
 #include "ns3/string.h"
