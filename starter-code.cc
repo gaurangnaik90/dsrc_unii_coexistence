@@ -36,7 +36,7 @@
 #include "ns3/ipv4-address-helper.h"
 #include "ns3/ipv4-interface-container.h"
 #include <iostream>
-
+#include "ns3/wave-helper.h"
 #include "ns3/ocb-wifi-mac.h"
 #include "ns3/wifi-80211p-helper.h"
 #include "ns3/wave-mac-helper.h"
@@ -70,7 +70,7 @@ void ReceivePacket (Ptr<Socket> socket)
 {
   while (socket->Recv ())
     {
-      NS_LOG_UNCOND ("Received one packet!");
+	NS_LOG_UNCOND ("Received one packet!");
     }
 }
 
@@ -85,7 +85,7 @@ static void GenerateTraffic (Ptr<Socket> socket, uint32_t pktSize,
     }
   else
     {
-      socket->Close ();
+	socket->Close ();
     }
 }
 
@@ -95,6 +95,7 @@ int main (int argc, char *argv[])
   uint32_t packetSize = 1000; // bytes
   uint32_t numPackets = 1;
   double interval = 1.0; // seconds
+  double m_txp = 10;
   bool verbose = false;
 
   CommandLine cmd;
@@ -108,32 +109,31 @@ int main (int argc, char *argv[])
   // Convert to time object
   Time interPacketInterval = Seconds (interval);
 
-
   NodeContainer c;
+  NetDeviceContainer devices;
   c.Create (2);
 
   // The below set of helpers will help us to put together the wifi NICs we want
-  YansWifiPhyHelper wifiPhy =  YansWifiPhyHelper::Default ();
+  
   YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default ();
-  Ptr<YansWifiChannel> channel = wifiChannel.Create ();
-  wifiPhy.SetChannel (channel);
+  Ptr<YansWifiChannel> channel = wifiChannel.Create ();  
+  YansWavePhyHelper wavePhy =  YansWavePhyHelper::Default ();
+  wavePhy.SetChannel (channel); 
+
+  WaveHelper waveHelper = WaveHelper::Default ();
+
+
+  wavePhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11);  
+  //-------------------- At this point, we have the PHY layer, with the channel specified ----------------------------
   // ns-3 supports generate a pcap trace
 
-  /* wifiPhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11);
-  NqosWaveMacHelper wifi80211pMac = NqosWaveMacHelper::Default (); //WAVE MAC Helper */ //Gaurang Commented this and above line
-   
-  
 
-  Wifi80211pHelper wifi80211p = Wifi80211pHelper::Default (); //802.11p MAC Helper
-  if (verbose)
-    {
-      wifi80211p.EnableLogComponents ();      // Turn on all Wifi 802.11p logging
-    }
-
-  wifi80211p.SetRemoteStationManager ("ns3::ConstantRateWifiManager",
-                                      "DataMode",StringValue (phyMode),
-                                      "ControlMode",StringValue (phyMode));
-  NetDeviceContainer devices = wifi80211p.Install (wifiPhy, wifi80211pMac, c);
+  //--------------------- At this point, we have the PHY and MAC Layer (with extensions) installed on the nodes c -------------------
+  waveHelper.SetRemoteStationManager ("ns3::ConstantRateWifiManager","DataMode",StringValue (phyMode),"ControlMode",StringValue (phyMode));
+  wavePhy.Set ("TxPowerStart",DoubleValue (m_txp));
+  wavePhy.Set ("TxPowerEnd", DoubleValue (m_txp));
+  QosWaveMacHelper waveMac = QosWaveMacHelper::Default ();
+  devices = waveHelper.Install (wavePhy, waveMac, c);
 
   // Tracing
   // wifiPhy.EnablePcap ("wave-simple-80211p", devices); //Gaurang disabled tracing
@@ -157,7 +157,6 @@ int main (int argc, char *argv[])
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> recvSink = Socket::CreateSocket (c.Get (0), tid);
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
-  //std::cout<< Ipv4Address::GetAny ();
   recvSink->Bind (local);
   recvSink->SetRecvCallback (MakeCallback (&ReceivePacket));
 
@@ -165,11 +164,10 @@ int main (int argc, char *argv[])
   InetSocketAddress remote = InetSocketAddress (Ipv4Address ("255.255.255.255"), 80);
   source->SetAllowBroadcast (true);
   source->Connect (remote);
-
+  
   Simulator::ScheduleWithContext (source->GetNode ()->GetId (),
                                   Seconds (1.0), &GenerateTraffic,
                                   source, packetSize, numPackets, interPacketInterval);
-
   Simulator::Run ();
   Simulator::Destroy ();
 
