@@ -9,34 +9,57 @@
 #include "ns3/wave-net-device.h"
 #include "ns3/wave-mac-helper.h"
 #include "ns3/wave-helper.h"
+#include "ns3/wave-bsm-helper.h"
 #include "ns3/snr-tag.h"
+#include "ns3/ipv4-address-helper.h"
+#include "ns3/string.h"
+#include "ns3/netanim-module.h"
 
 using namespace ns3;
 class WaveNetDeviceExample
  {
 public:
-  void SendWsmpExample (uint32_t noPackets, uint32_t packetSize);
+  uint32_t SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs);
  
 private:
   void SendOneWsmpPacket (uint32_t channel, uint32_t seq);
   bool Receive (Ptr<NetDevice> dev, Ptr<const Packet> pkt, uint16_t mode, const Address &sender);
-  void CreateWaveNodes (uint32_t noPackets, uint32_t packetSize);
+  void CreateWaveNodes ();
 
   uint32_t m_noPackets;
   uint32_t m_packetSize;
+  std::vector <double> m_txSafetyRanges;
+  double m_gpsAccuracyNs;
+  float m_interval;
+  int64_t m_streamIndex;
+  uint32_t m_simTime;
+  int m_nodeSpeed; //in m/s
+  int m_nodePause; //in s
+  double m_txSafetyRange1;
+  double m_txSafetyRange2;
+  double m_txSafetyRange3;
+  double m_txSafetyRange4;
+  double m_txSafetyRange5;
+  double m_txSafetyRange6;
+  double m_txSafetyRange7;
+  double m_txSafetyRange8;
+  double m_txSafetyRange9;
+  double m_txSafetyRange10;
+  uint32_t m_rxPacketCounter;  
+
+  WaveBsmHelper m_waveBsmHelper;
+
   NodeContainer nodes;
   NetDeviceContainer devices;
 };
 
 void
-WaveNetDeviceExample::CreateWaveNodes (uint32_t noPackets, uint32_t packetSize)
+WaveNetDeviceExample::CreateWaveNodes ()
 {
   nodes = NodeContainer ();
   nodes.Create (2);
  
-  m_noPackets = noPackets;
-  m_packetSize = packetSize;
-
+  /*
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
@@ -44,7 +67,39 @@ WaveNetDeviceExample::CreateWaveNodes (uint32_t noPackets, uint32_t packetSize)
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
   mobility.Install (nodes);
+  */
+  
+  //mobility starts here............................................................................
+
+  MobilityHelper mobilityAdhoc;
+
+  ObjectFactory pos;
+  pos.SetTypeId ("ns3::RandomBoxPositionAllocator");
+  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=1500.0]"));
+  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=300.0]"));
+  // we need antenna height uniform [1.0 .. 2.0] for loss model
+  pos.Set ("Z", StringValue ("ns3::UniformRandomVariable[Min=1.0|Max=2.0]"));
+
+  Ptr<PositionAllocator> taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
+  m_streamIndex += taPositionAlloc->AssignStreams (m_streamIndex);
+
+  std::stringstream ssSpeed;
+  ssSpeed << "ns3::UniformRandomVariable[Min=0.0|Max=" << m_nodeSpeed << "]";
+  std::stringstream ssPause;
+  ssPause << "ns3::ConstantRandomVariable[Constant=" << m_nodePause << "]";
+  mobilityAdhoc.SetMobilityModel ("ns3::RandomWaypointMobilityModel",
+                              "Speed", StringValue (ssSpeed.str ()),
+                              "Pause", StringValue (ssPause.str ()),
+                              "PositionAllocator", PointerValue (taPositionAlloc));
+  mobilityAdhoc.SetPositionAllocator (taPositionAlloc);
+  mobilityAdhoc.Install (nodes);
+  m_streamIndex += mobilityAdhoc.AssignStreams (nodes, m_streamIndex);
+
+  // initially assume all nodes are moving
+  WaveBsmHelper::GetNodesMoving ().resize (2, 1); //no_nodes=2
  
+  //mobility ends here............................................................................
+
   YansWifiChannelHelper waveChannel = YansWifiChannelHelper::Default ();
   YansWavePhyHelper wavePhy =  YansWavePhyHelper::Default ();
   wavePhy.SetChannel (waveChannel.Create ());
@@ -58,26 +113,40 @@ WaveNetDeviceExample::CreateWaveNodes (uint32_t noPackets, uint32_t packetSize)
       Ptr<WaveNetDevice> device = DynamicCast<WaveNetDevice> (devices.Get (i));
       device->SetReceiveCallback (MakeCallback (&WaveNetDeviceExample::Receive, this));
      }
+
+  InternetStackHelper internet;
+  internet.Install (nodes);
+
+  Ipv4AddressHelper ipv4;
+  ipv4.SetBase ("10.1.1.0", "255.255.255.0");
+  Ipv4InterfaceContainer interfaces = ipv4.Assign (devices);
  
    // Tracing
   wavePhy.EnablePcap ("wave-simple-device", devices);
+
+  //m_waveBsmHelper.Install ( interfaces, Seconds(m_simTime), m_packetSize, Seconds(m_interval), m_gpsAccuracyNs/1000000.0, m_txSafetyRanges, 1, Seconds(0.0));
 }
 
 bool
 WaveNetDeviceExample::Receive (Ptr<NetDevice> dev, Ptr<const Packet> pkt, uint16_t mode, const Address &sender)
 {
+  
+  m_rxPacketCounter++;
   SeqTsHeader seqTs;
   pkt->PeekHeader (seqTs);
   SnrTag tag;
+  
   if (pkt->PeekPacketTag(tag)){
-      //std::cout<<"Received Packet with SNR = " << tag.Get()<<std::endl; //Display SNR
+      std::cout<<"Received Packet with SNR = " << tag.Get()<<std::endl; //Display SNR
   }
+  
   
   std::cout << "receive a packet: " << std::endl
             << "  sequence = " << seqTs.GetSeq () << "," << std::endl
             << "  sendTime = " << seqTs.GetTs ().GetSeconds () << "s," << std::endl
             << "  recvTime = " << Now ().GetSeconds () << "s," << std::endl;
            // << "  protocol = 0x" << std::hex << mode << std::dec  << std::endl;
+ 
   return true;
 }
  
@@ -97,10 +166,52 @@ WaveNetDeviceExample::SendOneWsmpPacket  (uint32_t channel, uint32_t seq)
   sender->SendX  (p, bssWildcard, WSMP_PROT_NUMBER, txInfo);
 }
 
-void
-WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize)
+uint32_t
+WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs)
 {
-  CreateWaveNodes (noPackets, packetSize);
+  m_rxPacketCounter = 0;
+  m_noPackets = noPackets;
+  m_packetSize = packetSize;
+  m_gpsAccuracyNs = gpsAccuracyNs;
+  m_interval = interval;
+  m_simTime = simTime;
+  double txDist1 = 50.0;
+  double txDist2 = 100.0;
+  double txDist3 = 150.0;
+  double txDist4 = 200.0;
+  double txDist5 = 250.0;
+  double txDist6 = 300.0;
+  double txDist7 = 350.0;
+  double txDist8 = 350.0;
+  double txDist9 = 350.0;
+  double txDist10 = 350.0;
+  m_nodeSpeed = 5; //in m/s
+  m_nodePause = 0; //in s
+
+  m_txSafetyRange1 = txDist1;
+  m_txSafetyRange2 = txDist2;
+  m_txSafetyRange3 = txDist3;
+  m_txSafetyRange4 = txDist4;
+  m_txSafetyRange5 = txDist5;
+  m_txSafetyRange6 = txDist6;
+  m_txSafetyRange7 = txDist7;
+  m_txSafetyRange8 = txDist8;
+  m_txSafetyRange9 = txDist9;
+  m_txSafetyRange10 = txDist10;
+
+  m_txSafetyRanges.resize (10, 0);
+  m_txSafetyRanges[0] = m_txSafetyRange1;
+  m_txSafetyRanges[1] = m_txSafetyRange2;
+  m_txSafetyRanges[2] = m_txSafetyRange3;
+  m_txSafetyRanges[3] = m_txSafetyRange4;
+  m_txSafetyRanges[4] = m_txSafetyRange5;
+  m_txSafetyRanges[5] = m_txSafetyRange6;
+  m_txSafetyRanges[6] = m_txSafetyRange7;
+  m_txSafetyRanges[7] = m_txSafetyRange8;
+  m_txSafetyRanges[8] = m_txSafetyRange9;
+  m_txSafetyRanges[9] = m_txSafetyRange10;
+
+  CreateWaveNodes ();
   Ptr<WaveNetDevice>  sender = DynamicCast<WaveNetDevice> (devices.Get (0));
   Ptr<WaveNetDevice>  receiver = DynamicCast<WaveNetDevice> (devices.Get (1));
  
@@ -111,22 +222,33 @@ WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize)
  
   for (uint32_t i=1; i<= m_noPackets; i++)
   {
-    Simulator::Schedule (Seconds (0.1*i), &WaveNetDeviceExample::SendOneWsmpPacket,  this, CCH, i);
+    Simulator::Schedule (Seconds (m_interval*i), &WaveNetDeviceExample::SendOneWsmpPacket,  this, CCH, 2*i-1);
+    Simulator::Schedule (Seconds (m_interval*i), &WaveNetDeviceExample::SendOneWsmpPacket,  this, SCH1, 2*i);
   }
 
 
-  Simulator::Stop (Seconds (noPackets+10));
+  Simulator::Stop (Seconds (simTime));
+  
+  AnimationInterface anim ("animation.xml");
+
   Simulator::Run ();
   Simulator::Destroy ();
+  return m_rxPacketCounter;
  }
 
 int 
 main (int argc, char *argv[])
 {
-  WaveNetDeviceExample example;
-  uint32_t packetSize = 1000;
+  uint32_t packetSize = 500;
   uint32_t noPackets = 100;
-  std::cout << "run WAVE WSMP routing service case:" << std::endl;
-  example.SendWsmpExample (noPackets, packetSize);
+  uint32_t simTime = noPackets/10+1;
+  float interval = 0.1;
+  double gpsAccuracyNs = 40;  
+
+
+  WaveNetDeviceExample example;
+  uint32_t rxPacketCounter=example.SendWsmpExample (noPackets, packetSize, simTime, interval, gpsAccuracyNs);
+  //std::cout<<"rxPacketCounter = "<<rxPacketCounter<<std::endl;
+  std::cout<<"PDR = "<<rxPacketCounter/(2.0*noPackets)<<std::endl;
   return 0;
 }
