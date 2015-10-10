@@ -14,12 +14,13 @@
 #include "ns3/ipv4-address-helper.h"
 #include "ns3/string.h"
 #include "ns3/netanim-module.h"
+#include "ns3/command-line.h"
 
 using namespace ns3;
 class WaveNetDeviceExample
  {
 public:
-  uint32_t SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs);
+  uint32_t SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs, int nodeSpeed, int nodePause);
  
 private:
   void SendOneWsmpPacket (uint32_t channel, uint32_t seq);
@@ -59,7 +60,7 @@ WaveNetDeviceExample::CreateWaveNodes ()
   nodes = NodeContainer ();
   nodes.Create (2);
  
-  /*
+/*  
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
@@ -68,7 +69,8 @@ WaveNetDeviceExample::CreateWaveNodes ()
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
   mobility.Install (nodes);
   */
-  
+
+
   //mobility starts here............................................................................
 
   MobilityHelper mobilityAdhoc;
@@ -99,6 +101,7 @@ WaveNetDeviceExample::CreateWaveNodes ()
   WaveBsmHelper::GetNodesMoving ().resize (2, 1); //no_nodes=2
  
   //mobility ends here............................................................................
+
 
   YansWifiChannelHelper waveChannel = YansWifiChannelHelper::Default ();
   YansWavePhyHelper wavePhy =  YansWavePhyHelper::Default ();
@@ -167,7 +170,7 @@ WaveNetDeviceExample::SendOneWsmpPacket  (uint32_t channel, uint32_t seq)
 }
 
 uint32_t
-WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs)
+WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs, int nodeSpeed, int nodePause)
 {
   m_rxPacketCounter = 0;
   m_noPackets = noPackets;
@@ -175,6 +178,8 @@ WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, 
   m_gpsAccuracyNs = gpsAccuracyNs;
   m_interval = interval;
   m_simTime = simTime;
+  m_nodeSpeed = nodeSpeed;
+  m_nodePause = nodePause;
   double txDist1 = 50.0;
   double txDist2 = 100.0;
   double txDist3 = 150.0;
@@ -185,8 +190,6 @@ WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, 
   double txDist8 = 350.0;
   double txDist9 = 350.0;
   double txDist10 = 350.0;
-  m_nodeSpeed = 5; //in m/s
-  m_nodePause = 0; //in s
 
   m_txSafetyRange1 = txDist1;
   m_txSafetyRange2 = txDist2;
@@ -244,10 +247,20 @@ main (int argc, char *argv[])
   uint32_t simTime = noPackets/10+1;
   float interval = 0.1;
   double gpsAccuracyNs = 40;  
-
+  int nodeSpeed = 30;
+  int nodePause = 0;
+  
+  CommandLine cmd;
+  cmd.AddValue ("packetSize", "Packet Size", packetSize);
+  cmd.AddValue ("noPackets", "Number of Packets", noPackets);
+  cmd.AddValue ("interval", "Interval between packets)", interval);
+  cmd.AddValue ("gpsAccuracyNs", "gpsAccuracy in nanoseconds", gpsAccuracyNs);
+  cmd.AddValue ("nodeSpeed", "node Speed in m/s", nodeSpeed);
+  cmd.AddValue ("nodePause", "node pause in seconds", nodePause);
+  cmd.Parse (argc, argv);
 
   WaveNetDeviceExample example;
-  uint32_t rxPacketCounter=example.SendWsmpExample (noPackets, packetSize, simTime, interval, gpsAccuracyNs);
+  uint32_t rxPacketCounter=example.SendWsmpExample (noPackets, packetSize, simTime, interval, gpsAccuracyNs, nodeSpeed, nodePause);
   //std::cout<<"rxPacketCounter = "<<rxPacketCounter<<std::endl;
   std::cout<<"PDR = "<<rxPacketCounter/(2.0*noPackets)<<std::endl;
   return 0;
