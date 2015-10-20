@@ -16,12 +16,13 @@
 #include "ns3/netanim-module.h"
 #include "ns3/command-line.h"
 #include "ns3/double.h"
+#include "ns3/uinteger.h"
 
 using namespace ns3;
 class WaveNetDeviceExample
  {
 public:
-  void SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs, int nodeSpeed, int nodePause);
+  void SendWsmpExample (Ptr<YansWifiChannel> wirelessChannel, uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs, int nodeSpeed, int nodePause, double distanceToRx, double m_RxGain, double m_TxGain, double freq);
   bool mobility;
   uint32_t m_rxPacketCounter;  
  
@@ -39,6 +40,9 @@ private:
   uint32_t m_simTime;
   int m_nodeSpeed; //in m/s
   int m_nodePause; //in s
+  double m_distanceToRx;
+  double m_RxGain;
+  double m_TxGain;
   double m_txSafetyRange1;
   double m_txSafetyRange2;
   double m_txSafetyRange3;
@@ -49,7 +53,9 @@ private:
   double m_txSafetyRange8;
   double m_txSafetyRange9;
   double m_txSafetyRange10;
-
+  double m_freq;
+  Ptr<YansWifiChannel> m_channel;
+ 
   WaveBsmHelper m_waveBsmHelper;
 
   NodeContainer nodes;
@@ -68,7 +74,7 @@ WaveNetDeviceExample::CreateWaveNodes ()
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
   positionAlloc->Add (Vector (0.0, 0.0, 0.0));
-  positionAlloc->Add (Vector (50.0, 0.0, 0.0));
+  positionAlloc->Add (Vector (m_distanceToRx, 0.0, 0.0));
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
   mobility.Install (nodes);
@@ -105,10 +111,12 @@ WaveNetDeviceExample::CreateWaveNodes ()
   //mobility ends here............................................................................
   }
 
-  YansWifiChannelHelper waveChannel = YansWifiChannelHelper::Default ();
   YansWavePhyHelper wavePhy =  YansWavePhyHelper::Default ();
-  //std::cout<<"Frequency = "<<wavePhy.GetFrequency<<std::endl;
-  wavePhy.SetChannel (waveChannel.Create ());
+  wavePhy.Set ("TxGain", DoubleValue (m_TxGain) );
+  wavePhy.Set ("RxGain", DoubleValue (m_RxGain) );
+  std::cout<<"WAVE Carrier Frequency: (MHz) "<<m_freq<<std::endl;
+  wavePhy.Set ("Frequency", UintegerValue (m_freq) );
+  wavePhy.SetChannel (m_channel);
   wavePhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11);
   QosWaveMacHelper waveMac = QosWaveMacHelper::Default ();
   WaveHelper waveHelper = WaveHelper::Default ();
@@ -143,11 +151,10 @@ WaveNetDeviceExample::Receive (Ptr<NetDevice> dev, Ptr<const Packet> pkt, uint16
   SnrTag tag;
   
   if (pkt->PeekPacketTag(tag)){
-      std::cout << "WAVE receive a packet: " << std::endl
-            << "  sequence = " << seqTs.GetSeq () << "," << std::endl
-            << "  sendTime = " << seqTs.GetTs ().GetSeconds () << "s," << std::endl
-            << "  recvTime = " << Now ().GetSeconds () << "s" << std::endl
-            << "  SNR      = " << tag.Get()<<std::endl<<std::endl;   
+      std::cout << "WAVE receive a packet:"<< "  sendTime = " << seqTs.GetTs ().GetSeconds () << "s,"
+            << "  recvTime = " << Now ().GetSeconds () << "s"
+            << "  SNR = " << tag.Get() 
+            << "  sequence = " << seqTs.GetSeq () << std::endl;
   }
   return true;
 }
@@ -169,9 +176,10 @@ WaveNetDeviceExample::SendOneWsmpPacket  (uint32_t channel, uint32_t seq)
 }
 
 void
-WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs, int nodeSpeed, int nodePause)
+WaveNetDeviceExample::SendWsmpExample (Ptr<YansWifiChannel> wirelessChannel, uint32_t noPackets, uint32_t packetSize, uint32_t simTime, float interval, double gpsAccuracyNs, int nodeSpeed, int nodePause, double distanceToRx, double RxGain, double TxGain, double freq)
 {
-  //m_rxPacketCounter = 0;
+  m_rxPacketCounter = 0;
+  m_distanceToRx = distanceToRx;
   m_noPackets = noPackets;
   m_packetSize = packetSize;
   m_gpsAccuracyNs = gpsAccuracyNs;
@@ -179,6 +187,11 @@ WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, 
   m_simTime = simTime;
   m_nodeSpeed = nodeSpeed;
   m_nodePause = nodePause;
+  m_RxGain = RxGain;
+  m_TxGain = TxGain;
+  m_freq = freq;
+  m_channel = wirelessChannel;
+
   double txDist1 = 50.0;
   double txDist2 = 100.0;
   double txDist3 = 150.0;
@@ -233,7 +246,7 @@ WaveNetDeviceExample::SendWsmpExample (uint32_t noPackets, uint32_t packetSize, 
 class Interferer
 {
 public: 
-  void Initialize (uint32_t iPacketSize, uint32_t inoPackets, double iInterval, double iStartTime, double iDistanceToRx, std::string phyMode);
+  void Initialize (Ptr<YansWifiChannel> wirelessChannel, uint32_t iPacketSize, uint32_t inoPackets, double iInterval, double iStartTime, double iDistanceToRx, std::string phyMode, uint32_t freq, double iRxGain, double iTxGain);
   void InterfererSetup ();
 
 private: 
@@ -248,10 +261,14 @@ private:
   double m_iStartTime; // seconds
   double m_iDistanceToRx; // meters
   std::string m_phyMode;
+  uint32_t m_freq;
+  double m_iRxGain;
+  double m_iTxGain;
+  Ptr<YansWifiChannel> m_channel;
 };
 
 void 
-Interferer::Initialize(uint32_t iPacketSize, uint32_t inoPackets, double iInterval, double iStartTime, double iDistanceToRx, std::string phyMode)
+Interferer::Initialize(Ptr<YansWifiChannel> wirelessChannel, uint32_t iPacketSize, uint32_t inoPackets, double iInterval, double iStartTime, double iDistanceToRx, std::string phyMode, uint32_t freq, double iRxGain, double iTxGain)
 {
   m_iPacketSize = iPacketSize;
   m_inoPackets = inoPackets;
@@ -259,6 +276,10 @@ Interferer::Initialize(uint32_t iPacketSize, uint32_t inoPackets, double iInterv
   m_iStartTime = iStartTime;
   m_iDistanceToRx = iDistanceToRx;
   m_phyMode = phyMode;
+  m_freq = freq;
+  m_iRxGain = iRxGain;
+  m_iTxGain = iTxGain;
+  m_channel = wirelessChannel; 
 }
 
 void
@@ -312,12 +333,14 @@ Interferer::InterfererSetup()
   wifi.SetStandard(WIFI_PHY_STANDARD_80211a);
 
   YansWifiPhyHelper wifiPhy =  YansWifiPhyHelper::Default ();
-  wifiPhy.Set ("RxGain", DoubleValue (0) );
-  //std::cout<<"Carrier Frequency = "<<wifiPhy.getFrequency()<<std::endl; 
-  YansWifiChannelHelper wifiChannel;
-  wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
-  wifiChannel.AddPropagationLoss ("ns3::LogDistancePropagationLossModel");
-  wifiPhy.SetChannel (wifiChannel.Create ());
+  //YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default();
+  wifiPhy.Set ("RxGain", DoubleValue (m_iRxGain) );
+  wifiPhy.Set ("TxGain", DoubleValue (m_iTxGain) );
+  std::cout<<"Setting 802.11a Frequency to (MHz) "<<m_freq<<std::endl; 
+  wifiPhy.Set ("Frequency", UintegerValue(m_freq));
+  wifiPhy.SetChannel (m_channel);
+  //wifiChannel.AddPropagationLoss ("ns3::Cost231PropagationLossModel"); 
+  //wifiPhy.SetChannel (wifiChannel.Create()); 
 
   // Add a non-QoS upper mac, and disable rate control
   NqosWifiMacHelper wifiMac = NqosWifiMacHelper::Default ();
@@ -377,14 +400,22 @@ main (int argc, char *argv[])
   int nodeSpeed = 10;
   int nodePause = 0;
   bool nodeMobility = false;
+  double distanceToRx = 75.0;
+  double RxGain = 0;
+  double TxGain = 0;
+  double freq = 5900;
   //----------------------- IEEE 802.11a Node Configuration ----------------------------------------------
+  bool intSource = true; 
   std::string phyMode ("DsssRate1Mbps");
   uint32_t iPacketSize = 1000;
   uint32_t inoPackets = 100;
   double iInterval = 0.1; // seconds
   double iStartTime = 0.1; // seconds
   double iDistanceToRx = 75.0; // meters
-  
+  uint32_t ifreq = 5900; //not sure of the value yet
+  double iRxGain = 0;
+  double iTxGain = 0;  
+
   //----------------------- Command Line inputs ----------------------------------------------
   CommandLine cmd;
   cmd.AddValue ("nodeMobility", "Whether nodes or mobile or not", nodeMobility);
@@ -398,19 +429,37 @@ main (int argc, char *argv[])
   cmd.AddValue ("nodeSpeed", "node Speed in m/s", nodeSpeed);
   cmd.AddValue ("nodePause", "node pause in seconds", nodePause);
   cmd.AddValue ("iStartTime", "Interference Start Time", iStartTime);
+  cmd.AddValue ("distanceToRx", "Distance between WAVE source and receiver (stationary case)", distanceToRx);
   cmd.AddValue ("iDistanceToRx", "Distance between Interferer source and receiver", iDistanceToRx);
-  cmd.Parse (argc, argv);
+  cmd.AddValue ("freq", "Frequency of WAVE node", freq);
+  cmd.AddValue ("ifreq", "Frequency of 802.11a node", ifreq);
+  cmd.AddValue ("RxGain", "Gain of Receiver", RxGain);
+  cmd.AddValue ("TxGain", "Gain of Transmitter", TxGain);
+  cmd.AddValue ("iRxGain", "Gain of Interfering Receiver", iRxGain);
+  cmd.AddValue ("iTxGain", "Gain of Interfering Transmitter", iTxGain);
+  cmd.AddValue ("intSource", "Whether Interfering source is present", intSource);
 
+  cmd.Parse (argc, argv);
+  // --------------------------------------------------------------------------------------
+  YansWifiChannelHelper channel = YansWifiChannelHelper::Default ();
+  channel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
+  //channel.AddPropagationLoss ("ns3::LogDistancePropagationLossModel","Exponent", DoubleValue (2.0));
+  //channel.AddPropagationLoss ("ns3::Cost231PropagationLossModel");
+  Ptr<YansWifiChannel> wirelessChannel = channel.Create ();
+  
+   
  // Wave Traffic
   WaveNetDeviceExample example;
   example.mobility=nodeMobility;
-  example.SendWsmpExample (noPackets, packetSize, simTime, interval, gpsAccuracyNs, nodeSpeed, nodePause);
+  example.SendWsmpExample (wirelessChannel, noPackets, packetSize, simTime, interval, gpsAccuracyNs, nodeSpeed, nodePause, distanceToRx, RxGain, TxGain, freq);
 
+  if (intSource)
+  {
   // 802.11a Traffic
   Interferer interferer;
-  interferer.Initialize (iPacketSize, inoPackets, iInterval, iStartTime, iDistanceToRx, phyMode);
+  interferer.Initialize (wirelessChannel, iPacketSize, inoPackets, iInterval, iStartTime, iDistanceToRx, phyMode, ifreq, iRxGain, iTxGain);
   interferer.InterfererSetup();
-
+  }
 
   Simulator::Stop (Seconds (simTime));
   AnimationInterface anim ("animation.xml");
