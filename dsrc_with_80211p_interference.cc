@@ -333,8 +333,8 @@ Interferer::CreateWaveNodes ()
   //std::cout<<"WAVE Devices following constant mobility model\n";
   MobilityHelper mobility;
   Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator> ();
-  positionAlloc->Add (Vector (0, 0.0, 0.0));
-  positionAlloc->Add (Vector (m_distanceToRx, 0.0, 0.0));
+  positionAlloc->Add (Vector (0, 25.0, 0.0));
+  positionAlloc->Add (Vector (m_distanceToRx, 25.0, 0.0));
   mobility.SetPositionAllocator (positionAlloc);
   mobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
   mobility.Install (nodes);
@@ -632,7 +632,7 @@ main (int argc, char *argv[])
   Interferer interferer;
   interferer.mobility = false;
   interferer.iverbose = verbose;
-  interferer.SendWsmpExample (wirelessChannel, inoPackets, iPacketSize, simTime, interval, gpsAccuracyNs, nodeSpeed, nodePause, distanceToRx, iRxGain, iTxGain, freq, isifs, ipifs, ieifsnodifs, irifs);
+  interferer.SendWsmpExample (wirelessChannel, inoPackets, iPacketSize, simTime, interval, gpsAccuracyNs, nodeSpeed, nodePause, iDistanceToRx, iRxGain, iTxGain, freq, isifs, ipifs, ieifsnodifs, irifs);
 
   config.ConfigureAttributes ();
 
