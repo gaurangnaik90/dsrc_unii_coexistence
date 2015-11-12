@@ -255,7 +255,7 @@ DsrcNodes::CreateWaveNodes ()
   for (NodeContainer::Iterator i = nodes.Begin (); i != nodes.End (); ++i){
           node_count++;
 	  Ptr<Node> node = (*i);
-	  double speed = rvar->GetValue(15, 25);
+	  double speed = rvar->GetValue(5, 10);
           if (node_count <= m_noNodes/2)
 	  	node->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(Vector(speed,0,0));
 	  else 
@@ -424,7 +424,7 @@ DsrcNodes::SendWsmpExample ()
 
   Ptr<UniformRandomVariable> startTimeSeconds = CreateObject<UniformRandomVariable> ();
   startTimeSeconds->SetAttribute ("Min", DoubleValue (0.0));
-  startTimeSeconds->SetAttribute ("Max", DoubleValue (0.01));  
+  startTimeSeconds->SetAttribute ("Max", DoubleValue (0.05));  
   //startTimeSeconds->GetValue ();
 
   for (uint32_t node_no=0; node_no<m_noNodes; node_no++){
@@ -572,13 +572,18 @@ Interferer::Receive (Ptr<NetDevice> dev, Ptr<const Packet> pkt, uint16_t mode, c
   SeqTsHeader seqTs;
   pkt->PeekHeader (seqTs);
   SnrTag tag;
+  uint32_t cur_node;
+
   if (iverbose){
       if (pkt->PeekPacketTag(tag)){
-      	   std::cout << "Interference receiver received a packet:"<< "  sendTime = " << seqTs.GetTs ().GetSeconds () << "s,"
+      	  if(seqTs.GetSeq() > 10000000)	{  
+		cur_node = dev->GetNode ()->GetId(); 
+		std::cout << "Interference receiver "<<cur_node<<" received a packet:"<< "  sendTime = " << seqTs.GetTs ().GetSeconds () << "s,"
                      << "  recvTime = " << Now ().GetSeconds () << "s"
                      << "  SNR = " << tag.Get() 
                      << "  sequence = " << seqTs.GetSeq () << std::endl;
-      }
+        } 
+     }
   }
   return true;
 }
@@ -662,16 +667,18 @@ Interferer::SendWsmpExample (Ptr<YansWifiChannel> wirelessChannel, uint32_t noPa
   Simulator::Schedule (Seconds (0.0), &WaveNetDevice::StartSch,sender,schInfo);
   Simulator::Schedule (Seconds (0.0), &WaveNetDevice::StartSch, receiver, schInfo); // An important point is that the receiver should also be assigned channel access for the same channel to receive packets.
   
-  //Ptr<UniformRandomVariable> startTimeSeconds = CreateObject<UniformRandomVariable> ();
-  //startTimeSeconds->SetAttribute ("Min", DoubleValue (0.0));
-  //startTimeSeconds->SetAttribute ("Max", DoubleValue (0.01));
+  Ptr<UniformRandomVariable> startTimeSeconds = CreateObject<UniformRandomVariable> ();
+  startTimeSeconds->SetAttribute ("Min", DoubleValue (0.0));
+  startTimeSeconds->SetAttribute ("Max", DoubleValue (0.01));
   //startTimeSeconds->GetValue ();
   for (uint32_t i=1; i<= m_noPackets; i++)
   { 
     //Simulator::Schedule (Seconds (startTimeSeconds->GetValue () + m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 1000000+2*i-1);
     //Simulator::Schedule (Seconds (startTimeSeconds->GetValue () + m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 1000000+2*i);
-    Simulator::Schedule (Seconds (m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 10000000+2*i-1);
-    Simulator::Schedule (Seconds (m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 10000000+2*i);
+    for (uint32_t j=1; j<=10000; j++){
+	Simulator::Schedule (Seconds (startTimeSeconds->GetValue () + m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 10000000+j*1000+2*i);
+    	Simulator::Schedule (Seconds (startTimeSeconds->GetValue () + m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 10000000+j*1000+2*i-1);
+    }
     //Simulator::Schedule (Seconds (m_interval*i), &Interferer::SendOneWsmpPacket,  this, CCH, 1000+2*i-1);
     //Simulator::Schedule (Seconds (m_interval*i), &Interferer::SendOneWsmpPacket,  this, SCH1, 1000+2*i);
   }
